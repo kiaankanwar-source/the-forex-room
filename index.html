@@ -151,11 +151,89 @@
         </div>
 
         <div id="trades" class="section">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold">Positions</h2>
-                <span class="text-[10px] bg-gray-800 px-2 py-1 rounded">Leverage: 1:100</span>
+            <!-- 1. Top Section - Live Chart -->
+            <div class="mb-4">
+                <div class="flex items-center gap-2 mb-2 px-1">
+                    <h3 id="panel-chart-title" class="text-sm font-bold tracking-tight uppercase italic">BTCUSD Chart</h3>
+                    <i class="fas fa-caret-down text-[10px] text-gray-500"></i>
+                </div>
+                <div class="h-72 rounded-2xl overflow-hidden border border-gray-800 relative shadow-2xl">
+                    <iframe id="panel-tradingview-frame" src="https://s.tradingview.com/widgetembed/?symbol=BTCUSD&interval=1&theme=dark" width="100%" height="100%" frameborder="0"></iframe>
+                </div>
             </div>
-            <div id="active-trades-list" class="space-y-4"></div>
+
+            <!-- 2. Middle Section - Buy/Sell Tabs Selector -->
+            <div class="flex items-center justify-between gap-0 mb-4 rounded-xl overflow-hidden border border-gray-800 bg-black/40">
+                <button onclick="setPanelSide('SELL')" id="tab-sell" class="flex-1 p-3 transition-all opacity-50 grayscale bg-black/20">
+                    <p class="text-[9px] font-black text-gray-500 mb-1 uppercase tracking-widest">Sell</p>
+                    <p id="panel-sell-price" class="text-sm font-mono font-bold text-gray-400">0.00</p>
+                </button>
+                
+                <div class="h-10 w-[1px] bg-gray-800"></div>
+                <div class="px-3 flex flex-col items-center">
+                    <p class="text-[7px] font-black text-gray-600 uppercase">Spread</p>
+                    <p id="panel-spread" class="text-[9px] font-mono text-gray-500">0</p>
+                </div>
+                <div class="h-10 w-[1px] bg-gray-800"></div>
+
+                <button onclick="setPanelSide('BUY')" id="tab-buy" class="flex-1 p-3 transition-all bg-green-600/20 border-b-2 border-green-500">
+                    <p class="text-[9px] font-black text-green-500 mb-1 uppercase tracking-widest">Buy</p>
+                    <p id="panel-buy-price" class="text-sm font-mono font-bold text-white font-black">0.00</p>
+                </button>
+            </div>
+
+            <!-- 3. Bottom Section - Trading Controls -->
+            <div class="bg-[#1c2128] rounded-2xl p-4 border border-gray-800 mb-6 shadow-2xl">
+                <!-- Lot Selector -->
+                <div class="flex items-center justify-between mb-4 bg-black/40 p-1 rounded-xl border border-gray-800/50">
+                    <button onclick="changePanelLot(-0.01)" class="w-10 h-10 text-gray-400 hover:text-white transition text-xl font-bold">−</button>
+                    <div class="text-center flex-1 border-x border-gray-800/50">
+                        <input type="number" id="panel-lot-size" value="0.10" step="0.01" class="bg-transparent text-center font-black text-xl w-full outline-none text-white">
+                    </div>
+                    <button onclick="changePanelLot(0.01)" class="w-10 h-10 text-gray-400 hover:text-white transition text-xl font-bold">+</button>
+                </div>
+
+                <!-- Market Selection Info -->
+                <div class="flex justify-between items-center mb-4 px-1">
+                    <div class="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg border border-gray-700">
+                        <span class="text-[10px] font-black text-white uppercase tracking-tighter italic">Market</span>
+                        <i class="fas fa-chevron-down text-[8px] text-gray-500"></i>
+                    </div>
+                    <p class="text-[10px] text-gray-500 italic">Fill at market price</p>
+                </div>
+
+                <!-- SL/TP Checkbox -->
+                <div class="flex items-center gap-3 mb-6 px-1">
+                    <input type="checkbox" id="panel-tpsl-toggle" class="w-4 h-4 rounded border-gray-700 bg-black text-yellow-500 focus:ring-0">
+                    <label for="panel-tpsl-toggle" class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Take Profit / Stop Loss</label>
+                </div>
+
+                <!-- Margin Info List -->
+                <div class="space-y-2 mb-6 border-t border-gray-800 pt-4 px-1">
+                    <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                        <span>Margin / Free Margin</span>
+                        <span id="display-margin" class="text-white">₹0.00</span>
+                    </div>
+                    <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                        <span>Margin Level</span>
+                        <span id="display-margin-level" class="text-green-500 font-black tracking-tighter">100%</span>
+                    </div>
+                    <div class="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                        <span>Leverage</span>
+                        <span class="text-gray-400 italic">1:500</span>
+                    </div>
+                </div>
+
+                <!-- Final Confirmation Action -->
+                <button onclick="confirmTerminalTrade()" id="panel-confirm-btn" class="w-full bg-green-500 text-black py-4 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-green-500/10 active:scale-[0.98] transition-all">Confirm Buy</button>
+            </div>
+
+            <!-- 4. Footer Info Tabs -->
+            <div class="flex gap-6 border-b border-gray-800 mb-4 px-2">
+                <p class="text-[10px] font-black text-yellow-500 border-b-2 border-yellow-500 pb-2 uppercase italic tracking-wider">Positions</p>
+                <p class="text-[10px] font-bold text-gray-600 pb-2 uppercase italic tracking-wider">Pending Orders</p>
+            </div>
+            <div id="active-trades-list" class="space-y-3"></div>
         </div>
 
         <div id="profile" class="section">
@@ -627,6 +705,8 @@
         let isLogin = true;
         let activeTradesData = [];
         let currentUserData = null;
+        let currentPanelSymbol = 'BTCUSD';
+        let activePanelSide = 'BUY';
         let searchResults = [];
         let currentFilter = 'all';
         let priceSocket;
@@ -1030,6 +1110,63 @@
             showToast("Reply sent", "success");
         }
 
+        function setPanelSide(side) {
+            activePanelSide = side;
+            const sTab = document.getElementById('tab-sell');
+            const bTab = document.getElementById('tab-buy');
+            const btn = document.getElementById('panel-confirm-btn');
+            const sPrice = document.getElementById('panel-sell-price');
+            const bPrice = document.getElementById('panel-buy-price');
+
+            if (side === 'SELL') {
+                sTab.className = "flex-1 p-3 transition-all bg-red-600/20 border-b-2 border-red-500";
+                bTab.className = "flex-1 p-3 transition-all bg-black/20 grayscale opacity-50";
+                sPrice.className = "text-sm font-mono font-bold text-white font-black";
+                bPrice.className = "text-sm font-mono font-bold text-gray-500";
+                btn.innerText = "Confirm Sell";
+                btn.className = "w-full bg-red-600 text-white py-4 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-red-500/10 active:scale-[0.98] transition-all";
+            } else {
+                bTab.className = "flex-1 p-3 transition-all bg-green-600/20 border-b-2 border-green-500";
+                sTab.className = "flex-1 p-3 transition-all bg-black/20 grayscale opacity-50";
+                bPrice.className = "text-sm font-mono font-bold text-white font-black";
+                sPrice.className = "text-sm font-mono font-bold text-gray-500";
+                btn.innerText = "Confirm Buy";
+                btn.className = "w-full bg-green-500 text-black py-4 rounded-xl font-black uppercase tracking-widest shadow-lg shadow-green-500/10 active:scale-[0.98] transition-all";
+            }
+        }
+
+        async function confirmTerminalTrade() {
+            await executeTradeDirect(activePanelSide);
+        }
+
+        // TERMINAL PANEL FUNCTIONS
+        function changePanelLot(val) {
+            const input = document.getElementById('panel-lot-size');
+            let current = parseFloat(input.value);
+            current = Math.max(0.01, current + val);
+            input.value = current.toFixed(2);
+        }
+
+        async function executeTradeDirect(type) {
+            const lot = parseFloat(document.getElementById('panel-lot-size').value);
+            const symbol = currentPanelSymbol;
+            const price = parseFloat(document.getElementById(type === 'BUY' ? 'panel-buy-price' : 'panel-sell-price').innerText);
+            
+            if(!price || price <= 0) return showToast("Price Syncing... please wait", "error");
+
+            const requiredMargin = (price * lot * 100) / 500;
+            if(currentUserData.wallet.equity < requiredMargin) {
+                showToast("Insufficient Margin! Deposit funds.", "error");
+                return;
+            }
+
+            await db.collection('trades').add({
+                userId: auth.currentUser.uid, symbol, type, lot,
+                entryPrice: price, status: 'OPEN', timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            showToast(`${type} Order Executed at ${price}`, "success");
+        }
+
         function switchPage(p, el) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('section-active'));
             document.getElementById(p).classList.add('section-active');
@@ -1105,6 +1242,11 @@
             document.getElementById('modal-symbol').innerText = s;
             let item = marketItems.find(m => m.s === s) || searchResults.find(m => m.s === s);
             
+            // Sync with Trades Panel
+            currentPanelSymbol = s;
+            document.getElementById('panel-chart-title').innerText = s + " Chart";
+            document.getElementById('panel-tradingview-frame').src = `https://s.tradingview.com/widgetembed/?symbol=${s}&interval=1&theme=dark`;
+
             // If it's a new custom symbol, add it to our tracking
             if(!item) {
                 item = { s: s, n: 'Global Asset', p: 0, cat: 'other' };
@@ -1217,6 +1359,15 @@
                 </div>`;
             });
             list.innerHTML = html;
+
+            // Update Terminal Stats
+            if(marginEl) marginEl.innerText = "₹" + usedMargin.toFixed(2);
+            if(levelEl && currentUserData) {
+                const equity = currentUserData.wallet.equity + totalPnl;
+                const mLevel = usedMargin > 0 ? (equity / usedMargin) * 100 : 100;
+                levelEl.innerText = Math.round(mLevel) + "%";
+                levelEl.className = mLevel < 50 ? "text-[11px] font-bold text-red-500" : "text-[11px] font-bold text-green-500";
+            }
         }
 
         let currentHistoryFilter = 'trades';
