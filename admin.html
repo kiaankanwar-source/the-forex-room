@@ -81,6 +81,9 @@
                 <div onclick="switchPage('admin-leaderboard')" class="nav-btn border-b-2 border-yellow-500">
                     <i class="fas fa-trophy text-xl mb-2 text-yellow-500"></i><p class="text-[10px] font-bold">LEADERBOARD</p>
                 </div>
+                <div onclick="switchPage('admin-kyc')" class="nav-btn border-b-2 border-blue-400">
+                    <i class="fas fa-id-card text-xl mb-2 text-blue-400"></i><p class="text-[10px] font-bold uppercase">KYC Requests</p>
+                </div>
                 <div onclick="switchPage('admin-support')" class="nav-btn border-b-2 border-orange-500 col-span-2">
                     <i class="fas fa-headset text-xl mb-2 text-orange-500"></i><p class="text-[10px] font-bold">SUPPORT INBOX</p>
                 </div>
@@ -113,6 +116,12 @@
             <button onclick="switchPage('admin-dashboard')" class="mb-4 text-gray-500"><i class="fas fa-arrow-left"></i> Back</button>
             <h2 class="text-xl font-bold mb-6 italic text-orange-500">Support Tickets</h2>
             <div id="admin-ticket-list" class="space-y-4"></div>
+        </div>
+
+        <div id="admin-kyc" class="section">
+            <button onclick="switchPage('admin-dashboard')" class="mb-4 text-gray-500"><i class="fas fa-arrow-left"></i> Back</button>
+            <h2 class="text-xl font-bold mb-6 italic text-blue-400 uppercase">Verification Center</h2>
+            <div id="admin-kyc-list" class="space-y-4"></div>
         </div>
 
         <div id="coupons-admin" class="section">
@@ -258,6 +267,7 @@
                 loadAdminCoupons();
                 loadLeaderboardManagement(); // Load leaderboard management
                 loadAdminTransfers();
+                loadAdminKYC(); // Load KYC
                 loadAdminSupport();
                 loadPlatformStats();
                 loadGlobalSettingsUI();
@@ -437,11 +447,19 @@
         }
 
         function loadAdminDeposits() {
+            // Removing orderBy from Firestore to prevent "Missing Index" errors
             db.collection('transactions').where('type', '==', 'DEPOSIT_PENDING').onSnapshot(snap => {
                 const list = document.getElementById('admin-deposit-list');
-                list.innerHTML = snap.empty ? '<p class="text-xs text-gray-600 italic">No requests</p>' : '';
-                snap.forEach(doc => {
-                    const d = doc.data();
+                if (!list) return;
+                
+                let docs = [];
+                snap.forEach(doc => docs.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                
+                // Client-side sort: Newest first
+                docs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+                list.innerHTML = docs.length === 0 ? '<p class="text-xs text-gray-600 italic">No requests</p>' : '';
+                docs.forEach(d => {
                     const color = d.status === 'COMPLETED' ? 'border-green-500' : (d.status === 'REJECTED' ? 'border-red-500' : 'border-blue-500');
                     list.innerHTML += `
                     <div class="p-4 card-bg border-l-4 ${color}">
@@ -451,8 +469,8 @@
                         </div>
                         <p class="text-[10px] text-yellow-500 font-mono mt-2">UTR: ${d.utr || 'N/A'}</p>
                         <div class="flex gap-2 mt-4">
-                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${doc.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'DEPOSIT')" class="flex-1 py-1 bg-green-600 rounded text-[9px] font-bold">APPROVE</button>` : ''}
-                            ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${doc.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'DEPOSIT')" class="flex-1 py-1 bg-red-600 rounded text-[9px] font-bold">REJECT</button>` : ''}
+                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'DEPOSIT')" class="flex-1 py-1 bg-green-600 rounded text-[9px] font-bold">APPROVE</button>` : ''}
+                            ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'DEPOSIT')" class="flex-1 py-1 bg-red-600 rounded text-[9px] font-bold">REJECT</button>` : ''}
                         </div>
                     </div>`;
                 });
@@ -462,9 +480,14 @@
         function loadAdminWithdrawals() {
             db.collection('transactions').where('type', '==', 'WITHDRAW_REQUEST').onSnapshot(snap => {
                 const list = document.getElementById('admin-withdrawal-list');
-                list.innerHTML = snap.empty ? '<p class="text-xs text-gray-600 italic">No requests</p>' : '';
-                snap.forEach(doc => {
-                    const d = doc.data();
+                if (!list) return;
+
+                let docs = [];
+                snap.forEach(doc => docs.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                docs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+                list.innerHTML = docs.length === 0 ? '<p class="text-xs text-gray-600 italic">No requests</p>' : '';
+                docs.forEach(d => {
                     const color = d.status === 'COMPLETED' ? 'border-green-500' : (d.status === 'REJECTED' ? 'border-red-500' : 'border-blue-500');
                     const info = d.details ? (d.method === 'upi' ? d.details.upiId : (d.method === 'bank' ? d.details.acc : d.details.address)) : 'N/A';
                     list.innerHTML += `
@@ -472,8 +495,8 @@
                         <p class="font-bold text-xs">₹${d.amount} [${d.method}]</p>
                         <p class="text-[9px] text-gray-500 truncate mt-1">${info}</p>
                         <div class="flex gap-2 mt-4">
-                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${doc.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'WITHDRAW')" class="flex-1 py-1 bg-green-600 rounded text-[9px] font-bold">APPROVE</button>` : ''}
-                            ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${doc.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'WITHDRAW')" class="flex-1 py-1 bg-red-600 rounded text-[9px] font-bold">REJECT</button>` : ''}
+                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'WITHDRAW')" class="flex-1 py-1 bg-green-600 rounded text-[9px] font-bold">APPROVE</button>` : ''}
+                            ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'WITHDRAW')" class="flex-1 py-1 bg-red-600 rounded text-[9px] font-bold">REJECT</button>` : ''}
                         </div>
                     </div>`;
                 });
@@ -483,9 +506,14 @@
         function loadAdminTransfers() {
             db.collection('transactions').where('type', '==', 'WALLET_TRANSFER_REQUEST').onSnapshot(snap => {
                 const list = document.getElementById('admin-transfer-list');
-                list.innerHTML = snap.empty ? '<p class="text-xs text-gray-600 italic">No pending transfers</p>' : '';
-                snap.forEach(doc => {
-                    const d = doc.data();
+                if (!list) return;
+
+                let docs = [];
+                snap.forEach(doc => docs.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                docs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+                list.innerHTML = docs.length === 0 ? '<p class="text-xs text-gray-600 italic">No pending transfers</p>' : '';
+                docs.forEach(d => {
                     const color = d.status === 'COMPLETED' ? 'border-green-500' : (d.status === 'REJECTED' ? 'border-red-500' : 'border-blue-500');
                     list.innerHTML += `
                     <div class="p-4 card-bg border-l-4 ${color}">
@@ -496,8 +524,8 @@
                         <p class="text-[10px] text-yellow-500 font-mono font-bold mb-2 uppercase">UTR: ${d.utr || 'NO UTR'}</p>
                         <p class="text-[9px] text-gray-500 mb-4">User UID: ${d.userId}</p>
                         <div class="flex gap-2">
-                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${doc.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'TRANSFER')" class="flex-1 py-2 bg-purple-600 rounded text-[10px] font-bold">APPROVE</button>` : ''}
-                            ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${doc.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'TRANSFER')" class="py-2 px-4 bg-red-900/20 text-red-500 rounded text-[10px] font-bold">REJECT</button>` : ''}
+                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'TRANSFER')" class="flex-1 py-2 bg-purple-600 rounded text-[10px] font-bold">APPROVE</button>` : ''}
+                            ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'TRANSFER')" class="py-2 px-4 bg-red-900/20 text-red-500 rounded text-[10px] font-bold">REJECT</button>` : ''}
                         </div>
                     </div>`;
                 });
@@ -634,6 +662,65 @@
         async function toggleCoupon(id, status) {
             await db.collection('coupons').doc(id).update({ active: status });
             showToast("Coupon status updated.", "success");
+        }
+
+        // --- KYC MANAGEMENT ---
+        function loadAdminKYC() {
+            db.collection('users')
+              .where('kycStatus', 'in', ['Reviewing', 'Verified', 'Rejected']) // Show all relevant statuses
+              .onSnapshot(snap => {
+                const list = document.getElementById('admin-kyc-list');
+                if (!list) return;
+
+                let users = [];
+                snap.forEach(doc => users.push({ uid: doc.id, ...doc.data() }));
+
+                // Client-side sort: Latest submission at top
+                users.sort((a, b) => {
+                    const tA = (a.kycData && a.kycData.submittedAt) ? a.kycData.submittedAt.toMillis() : 0;
+                    const tB = (b.kycData && b.kycData.submittedAt) ? b.kycData.submittedAt.toMillis() : 0;
+                    return tB - tA;
+                });
+
+                list.innerHTML = users.length === 0 ? '<p class="text-xs text-gray-600 italic">No pending KYC requests</p>' : '';
+                users.forEach(u => {
+                    const kd = u.kycData || {};
+                    let statusBadgeClass = 'bg-blue-500/10 text-blue-500'; // Default for Reviewing
+                    let borderColor = 'border-blue-500';
+                    if (u.kycStatus === 'Verified') {
+                        statusBadgeClass = 'bg-green-500/10 text-green-500';
+                        borderColor = 'border-green-500';
+                    } else if (u.kycStatus === 'Rejected') {
+                        statusBadgeClass = 'bg-red-500/10 text-red-500';
+                        borderColor = 'border-red-500';
+                    }
+
+                    list.innerHTML += `
+                        <div class="p-4 card-bg border-l-4 ${borderColor} mb-3">
+                            <div class="flex justify-between items-center mb-2">
+                                <p class="text-xs font-bold text-blue-400 uppercase">${kd.name || u.name}</p>
+                                <span class="badge ${statusBadgeClass}">${u.kycStatus}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 mb-4">
+                                <p class="text-[9px] text-gray-500 font-bold uppercase">City: <span class="text-gray-300">${kd.city || 'N/A'}</span></p>
+                                <p class="text-[9px] text-gray-500 font-bold uppercase">Phone: <span class="text-gray-300">${kd.phone || 'N/A'}</span></p>
+                                <p class="text-[9px] text-gray-500 font-bold uppercase col-span-2">UPI ID: <span class="text-yellow-500 font-mono">${kd.upi || 'N/A'}</span></p>
+                                <p class="text-[9px] text-gray-500 font-bold uppercase col-span-2">Submitted: <span class="text-gray-300">${kd.submittedAt ? new Date(kd.submittedAt.toDate()).toLocaleString() : 'N/A'}</span></p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="handleKYCStatus('${u.uid}', 'Verified')" class="flex-1 bg-green-600 py-2 rounded text-[10px] font-bold uppercase tracking-wider">Approve</button>
+                                <button onclick="handleKYCStatus('${u.uid}', 'Rejected')" class="flex-1 bg-red-900/30 text-red-500 py-2 rounded text-[10px] font-bold uppercase tracking-wider">Reject</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+        }
+
+        async function handleKYCStatus(uid, status) {
+            const msg = status === 'Verified' ? "KYC Approved" : "KYC Rejected";
+            await db.collection('users').doc(uid).update({ kycStatus: status });
+            showToast(msg, status === 'Verified' ? "success" : "error");
         }
 
         // --- LEADERBOARD MANAGEMENT FUNCTIONS (FIXED MISSING FUNCTIONS) ---

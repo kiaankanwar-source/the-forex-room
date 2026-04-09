@@ -32,6 +32,13 @@
         #prompt-modal input::placeholder { color: #4b5563; }
         .modal-blur { backdrop-filter: blur(8px); }
         
+        /* Progress Bar styles */
+        .progress-container { background: #0d1117; border-radius: 20px; height: 6px; overflow: hidden; margin: 10px 0; }
+        .progress-bar { height: 100%; transition: width 0.5s ease; }
+
+        /* Tier Styles */
+        .tier-badge { font-size: 9px; font-weight: 900; letter-spacing: 1px; padding: 2px 8px; border-radius: 4px; }
+
         input { outline: none; } /* Ensure no default outline on focus */
         #auth-btn { cursor: pointer; } /* Allow disabled state to control cursor/opacity */
     </style>
@@ -281,15 +288,44 @@
 
         <div id="profile" class="section">
             <div class="text-center py-4 border-b border-gray-800 mb-6">
+                <div class="flex justify-center items-center mb-3">
                 <div class="w-20 h-20 bg-gray-800 rounded-full mx-auto flex items-center justify-center text-3xl mb-3 border border-yellow-500 text-yellow-500">
                     <i class="fas fa-user-tie"></i>
                 </div>
+                </div>
                 <div class="mb-2">
                     <span id="kyc-badge" class="badge bg-red-500/20 text-red-500">Unverified</span>
+                    <span id="tier-display" class="tier-badge bg-gray-600 text-white ml-2">STARTER</span>
                     <button id="kyc-submit-btn" onclick="submitKYC()" class="text-[9px] text-yellow-500 underline ml-2">Complete KYC</button>
                 </div>
+                
+                <!-- IDEA 5: Verification Progress -->
+                <div class="px-10 mb-4">
+                    <p class="text-[8px] text-gray-500 uppercase font-bold text-left mb-1">Verification Progress</p>
+                    <div class="progress-container">
+                        <div id="kyc-progress-bar" class="progress-bar bg-red-500" style="width: 20%"></div>
+                    </div>
+                </div>
+
                 <h3 id="display-name" class="font-bold text-lg">---</h3>
                 <p id="display-email" class="text-gray-500 text-xs"></p>
+            </div>
+
+            <!-- IDEA 1: Analytics Grid -->
+            <p class="text-[10px] font-bold text-gray-500 uppercase mb-3">Trading Analytics</p>
+            <div class="grid grid-cols-3 gap-2 mb-6 text-center">
+                <div class="card-bg p-3 border border-gray-800/50">
+                    <p class="text-[7px] text-gray-500 uppercase">Total Trades</p>
+                    <p id="stat-total-trades" class="font-bold text-sm text-white">0</p>
+                </div>
+                <div class="card-bg p-3 border border-gray-800/50">
+                    <p class="text-[7px] text-gray-500 uppercase">Win Rate</p>
+                    <p id="stat-winrate" class="font-bold text-sm text-blue-400">0%</p>
+                </div>
+                <div class="card-bg p-3 border border-gray-800/50">
+                    <p class="text-[7px] text-gray-500 uppercase">Net Profit</p>
+                    <p id="stat-total-profit" class="font-bold text-sm text-green-500">₹0</p>
+                </div>
             </div>
 
             <p class="text-[10px] font-bold text-gray-500 uppercase mb-3">Assets & Funding</p>
@@ -978,12 +1014,33 @@
                     document.getElementById('display-name').innerText = d.name;
                     document.getElementById('display-email').innerText = d.email;
 
-                    // Update Deposit Page UI
+                    // Update Deposit/Withdrawal/Transfer Page UI elements
                     document.getElementById('dep-acc-no').innerText = d.accountNumber;
                     document.getElementById('dep-balance').innerText = "₹" + d.wallet.equity.toFixed(2);
                     document.getElementById('withdraw-wallet-bal').innerText = "₹" + (d.wallet.withdrawalWallet || 0).toFixed(2);
                     document.getElementById('transfer-main-bal').innerText = "₹" + d.wallet.equity.toFixed(2);
-                    document.getElementById('dep-last-update').innerText = d.lastUpdated ? d.lastUpdated.toDate().toLocaleString() : 'Just Now';
+                    document.getElementById('dep-last-update').innerText = d.createdAt ? new Date(d.createdAt.toDate()).toLocaleString() : 'Just Now';
+
+            // TIER & PROGRESS LOGIC (Idea 2 & 5)
+            let tier = { name: 'STARTER', color: 'bg-gray-600' };
+            const equity = d.wallet.equity || 0;
+            if(equity >= 1000000) tier = { name: 'WHALE', color: 'bg-purple-600' };
+            else if(equity >= 200000) tier = { name: 'ELITE', color: 'bg-blue-600' };
+            else if(equity >= 50000) tier = { name: 'PRO', color: 'bg-yellow-600' };
+
+            const tBadge = document.getElementById('tier-display');
+            if(tBadge) {
+                tBadge.innerText = tier.name;
+                tBadge.className = `tier-badge ${tier.color} text-white ml-2`;
+            }
+
+            const progressMap = { 'Pending': 20, 'Reviewing': 70, 'Verified': 100 };
+            const progress = progressMap[d.kycStatus] || 10;
+            const pBar = document.getElementById('kyc-progress-bar');
+            if(pBar) {
+                pBar.style.width = progress + "%";
+                pBar.className = `progress-bar ${progress === 100 ? 'bg-green-500' : (progress > 50 ? 'bg-yellow-500' : 'bg-red-500')}`;
+            }
 
                     // Activation Status Logic
                     const now = Date.now();
@@ -1028,6 +1085,7 @@
                 loadSupportTickets(user.uid);
                 setupTradePanel('BTCUSD'); // Initialize trade panel with a default symbol
                 loadLeaderboard(); // Load leaderboard for users
+                loadProfileStats(user.uid); // Load Profile Analytics
                 initPriceSocket();
             } else {
                 document.getElementById('auth-container').classList.remove('hidden');
@@ -1047,6 +1105,32 @@
         document.getElementById('panel-tpsl-toggle').addEventListener('change', function() {
             document.getElementById('panel-tpsl-inputs').classList.toggle('hidden', !this.checked);
         });
+
+        // IDEA 1: PERFORMANCE ANALYTICS
+        function loadProfileStats(uid) {
+            db.collection('trades').where('userId', '==', uid).where('status', '==', 'CLOSED').onSnapshot(snap => {
+                let total = snap.size;
+                let wins = 0;
+                let totalProfit = 0;
+                snap.forEach(doc => {
+                    const t = doc.data();
+                    if(t.pnl > 0) wins++;
+                    totalProfit += (t.pnl || 0);
+                });
+                const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+                
+                const totalTradesEl = document.getElementById('stat-total-trades');
+                const winRateEl = document.getElementById('stat-winrate');
+                const totalProfitEl = document.getElementById('stat-total-profit');
+                
+                if(totalTradesEl) totalTradesEl.innerText = total;
+                if(winRateEl) winRateEl.innerText = winRate + "%";
+                if(totalProfitEl) {
+                    totalProfitEl.innerText = "₹" + totalProfit.toLocaleString('en-IN');
+                    totalProfitEl.className = totalProfit >= 0 ? "font-bold text-sm text-green-500" : "font-bold text-sm text-red-500";
+                }
+            });
+        }
 
         // CORE UI LOGIC
         function toggleAuth(e) {
@@ -1426,11 +1510,34 @@
         }
 
         async function submitKYC() {
-            const name = await showPrompt("KYC Submission", "Please enter your full legal name for verification:", true);
-            if(name) {
-                await db.collection('users').doc(auth.currentUser.uid).update({ kycStatus: 'Reviewing' });
+            openServiceModal('Verification Center', `
+                <div class="text-left space-y-4">
+                    <p class="text-[11px] text-gray-400 mb-4">Complete your identity verification to unlock full withdrawal limits.</p>
+                    <div><p class="text-[10px] text-gray-500 uppercase mb-1">Full Legal Name</p><input type="text" id="kyc-name" class="w-full bg-black p-3 rounded-lg border border-gray-800 text-sm"></div>
+                    <div><p class="text-[10px] text-gray-500 uppercase mb-1">City</p><input type="text" id="kyc-city" class="w-full bg-black p-3 rounded-lg border border-gray-800 text-sm"></div>
+                    <div><p class="text-[10px] text-gray-500 uppercase mb-1">Phone Number</p><input type="tel" id="kyc-phone" class="w-full bg-black p-3 rounded-lg border border-gray-800 text-sm"></div>
+                    <div><p class="text-[10px] text-gray-500 uppercase mb-1">Primary UPI ID</p><input type="text" id="kyc-upi" class="w-full bg-black p-3 rounded-lg border border-gray-800 text-sm"></div>
+                    <button onclick="submitKYCData()" class="w-full bg-yellow-500 text-black py-4 rounded-xl font-bold uppercase text-xs mt-4">Submit Verification</button>
+                </div>
+            `);
+        }
+
+        async function submitKYCData() {
+            const name = document.getElementById('kyc-name').value;
+            const city = document.getElementById('kyc-city').value;
+            const phone = document.getElementById('kyc-phone').value;
+            const upi = document.getElementById('kyc-upi').value;
+
+            if(!name || !city || !phone || !upi) return showToast("Please fill all required fields", "error");
+
+            try {
+                await db.collection('users').doc(auth.currentUser.uid).update({ 
+                    kycStatus: 'Reviewing',
+                    kycData: { name, city, phone, upi, submittedAt: firebase.firestore.FieldValue.serverTimestamp() }
+                });
+                closeServiceModal();
                 showToast("KYC submitted for review.", "info");
-            }
+            } catch(e) { showToast(e.message, "error"); }
         }
 
         function loadTrades(uid) {
