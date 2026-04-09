@@ -81,6 +81,9 @@
                 <div onclick="switchPage('admin-leaderboard')" class="nav-btn border-b-2 border-yellow-500">
                     <i class="fas fa-trophy text-xl mb-2 text-yellow-500"></i><p class="text-[10px] font-bold">LEADERBOARD</p>
                 </div>
+                <div onclick="switchPage('admin-internal-transfers')" class="nav-btn border-b-2 border-orange-500">
+                    <i class="fas fa-exchange-alt text-xl mb-2 text-orange-500"></i><p class="text-[10px] font-bold uppercase">Internal Transfers</p>
+                </div>
                 <div onclick="switchPage('admin-kyc')" class="nav-btn border-b-2 border-blue-400">
                     <i class="fas fa-id-card text-xl mb-2 text-blue-400"></i><p class="text-[10px] font-bold uppercase">KYC Requests</p>
                 </div>
@@ -122,6 +125,12 @@
             <button onclick="switchPage('admin-dashboard')" class="mb-4 text-gray-500"><i class="fas fa-arrow-left"></i> Back</button>
             <h2 class="text-xl font-bold mb-6 italic text-blue-400 uppercase">Verification Center</h2>
             <div id="admin-kyc-list" class="space-y-4"></div>
+        </div>
+
+        <div id="admin-internal-transfers" class="section">
+            <button onclick="switchPage('admin-dashboard')" class="mb-4 text-gray-500"><i class="fas fa-arrow-left"></i> Back</button>
+            <h2 class="text-xl font-bold mb-6 italic text-orange-500 uppercase">Internal Funds Transfers</h2>
+            <div id="admin-internal-transfer-list" class="space-y-4"></div>
         </div>
 
         <div id="coupons-admin" class="section">
@@ -267,6 +276,7 @@
                 loadAdminCoupons();
                 loadLeaderboardManagement(); // Load leaderboard management
                 loadAdminTransfers();
+                loadAdminInternalTransfers(); // Load Internal Funds Transfers
                 loadAdminKYC(); // Load KYC
                 loadAdminSupport();
                 loadPlatformStats();
@@ -447,8 +457,7 @@
         }
 
         function loadAdminDeposits() {
-            // Removing orderBy from Firestore to prevent "Missing Index" errors
-            db.collection('transactions').where('type', '==', 'DEPOSIT_PENDING').onSnapshot(snap => {
+            db.collection('transactions').where('type', '==', 'DEPOSIT_PENDING').onSnapshot(snap => { // No orderBy to avoid index issues
                 const list = document.getElementById('admin-deposit-list');
                 if (!list) return;
                 
@@ -504,7 +513,7 @@
         }
 
         function loadAdminTransfers() {
-            db.collection('transactions').where('type', '==', 'WALLET_TRANSFER_REQUEST').onSnapshot(snap => {
+            db.collection('transactions').where('type', '==', 'WALLET_TRANSFER_REQUEST').where('isActivation', '==', true).onSnapshot(snap => {
                 const list = document.getElementById('admin-transfer-list');
                 if (!list) return;
 
@@ -524,11 +533,552 @@
                         <p class="text-[10px] text-yellow-500 font-mono font-bold mb-2 uppercase">UTR: ${d.utr || 'NO UTR'}</p>
                         <p class="text-[9px] text-gray-500 mb-4">User UID: ${d.userId}</p>
                         <div class="flex gap-2">
-                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'TRANSFER')" class="flex-1 py-2 bg-purple-600 rounded text-[10px] font-bold">APPROVE</button>` : ''}
+                            ${d.status !== 'COMPLETED' ? `<button onclick="handleActivationRequest('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED')" class="flex-1 py-2 bg-purple-600 rounded text-[10px] font-bold">APPROVE</button>` : ''}
+                            ${d.status !== 'REJECTED' ? `<button onclick="handleActivationRequest('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED')" class="py-2 px-4 bg-red-900/20 text-red-500 rounded text-[10px] font-bold">REJECT</button>` : ''}
+                        </div>
+                    </div>`;
+                });
+            });
+        }
+
+        // New function for Internal Funds Transfers
+        function loadAdminInternalTransfers() {
+            db.collection('transactions').where('type', '==', 'WALLET_TRANSFER_REQUEST').where('isActivation', '==', false).onSnapshot(snap => {
+                const list = document.getElementById('admin-internal-transfer-list');
+                if (!list) return;
+
+                let docs = [];
+                snap.forEach(doc => docs.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                docs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
+                list.innerHTML = docs.length === 0 ? '<p class="text-xs text-gray-600 italic">No internal funds transfers</p>' : '';
+                docs.forEach(d => {
+                    const color = d.status === 'COMPLETED' ? 'border-green-500' : (d.status === 'REJECTED' ? 'border-red-500' : 'border-blue-500');
+                    list.innerHTML += `
+                    <div class="p-4 card-bg border-l-4 ${color}">
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="text-xs font-bold">Transfer: ₹${d.amount}</p>
+                            <span class="text-[9px] bg-orange-500/10 text-orange-400 px-2 rounded">Funds Transfer</span>
+                        </div>
+                        <p class="text-[10px] text-yellow-500 font-mono font-bold mb-2 uppercase">UTR: ${d.utr || 'NO UTR'}</p>
+                        <p class="text-[9px] text-gray-500 mb-4">User UID: ${d.userId}</p>
+                        <div class="flex gap-2">
+                            ${d.status !== 'COMPLETED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'COMPLETED', 'TRANSFER')" class="flex-1 py-2 bg-green-600 rounded text-[10px] font-bold">APPROVE</button>` : ''}
                             ${d.status !== 'REJECTED' ? `<button onclick="handleTrxStatus('${d.id}', '${d.userId}', ${d.amount}, '${d.status}', 'REJECTED', 'TRANSFER')" class="py-2 px-4 bg-red-900/20 text-red-500 rounded text-[10px] font-bold">REJECT</button>` : ''}
                         </div>
                     </div>`;
                 });
+            });
+        }
+
+        async function handleActivationRequest(trxId, userId, transferAmount, currentStatus, targetStatus) {
+            const confirmed = await showPrompt("Confirm Action", `Are you sure you want to change status to ${targetStatus}?`, false);
+            if (!confirmed) return;
+
+            const userRef = db.collection('users').doc(userId);
+            try {
+                await db.runTransaction(async (t) => {
+                    const doc = await t.get(userRef);
+                    const userData = doc.data();
+                    let wallet = userData.wallet;
+
+                    if (targetStatus === 'COMPLETED') {
+                        // SECURITY: Check if user has enough balance to transfer
+                        if (wallet.equity < transferAmount) {
+                            throw new Error("Insufficient main balance to complete transfer.");
+                        }
+                        wallet.equity -= transferAmount; // Deduct ONLY the transfer amount
+                        wallet.withdrawalWallet = (wallet.withdrawalWallet || 0) + transferAmount;
+                        userData.walletActivation = { status: 'ACTIVE', expiry: Date.now() + (365 * 24 * 60 * 60 * 1000), lastPaid: Date.now() };
+                    } else if (currentStatus === 'COMPLETED' && targetStatus === 'REJECTED') {
+                        wallet.equity += transferAmount; // Refund the transfer amount
+                        wallet.withdrawalWallet -= transferAmount;
+                        userData.walletActivation = null; // Deactivate wallet
+                    }
+                    t.update(userRef, { wallet: wallet, walletActivation: userData.walletActivation || null });
+                    t.update(db.collection('transactions').doc(trxId), { status: targetStatus, lastUpdated: firebase.firestore.FieldValue.serverTimestamp() });
+                });
+                showToast("Activation Request Updated Successfully", "success");
+            } catch (e) {
+                showToast("Error: " + e.message, "error");
+                console.error("Activation transaction failed:", e);
+            }
+        }
+
+        async function handleTrxStatus(trxId, userId, amount, currentStatus, targetStatus, type) { // This is now for DEPOSIT, WITHDRAW, and FUNDS_TRANSFER
+            const confirmed = await showPrompt("Confirm Action", `Are you sure you want to change status to ${targetStatus}?`, false);
+            if (!confirmed) return;
+
+            const userRef = db.collection('users').doc(userId);
+            try {
+                await db.runTransaction(async (t) => {
+                    const doc = await t.get(userRef);
+                    const userData = doc.data();
+                    if (!userData) throw new Error("User data not found.");
+                    let wallet = userData.wallet;
+
+                    if(type === 'DEPOSIT') {
+                        if(targetStatus === 'COMPLETED') {
+                            // Ensure wallet.equity is a number before adding
+                            if (typeof wallet.equity !== 'number') {
+                                wallet.equity = 0;
+                            }
+
+                            wallet.equity += amount;
+                            // REFERRAL COMMISSION (10%)
+                            if(userData.referredBy) {
+                                const uplineSnap = await t.get(db.collection('users').where('myReferralCode', '==', userData.referredBy).limit(1));
+                                if(!uplineSnap.empty) {
+                                    const uplineDoc = uplineSnap.docs[0];
+                                    const commission = amount * 0.10;
+                                    const uplineWallet = uplineDoc.data().wallet;
+                                    if (typeof uplineWallet.equity !== 'number') {
+                                        uplineWallet.equity = 0;
+                                    }
+                                    t.update(uplineDoc.ref, { "wallet.equity": uplineWallet.equity + commission });
+                                    // Log Commission Transaction
+                                    db.collection('transactions').add({
+                                        userId: uplineDoc.id, type: 'REFERRAL_COMMISSION', amount: commission,
+                                        fromUser: userData.name, status: 'COMPLETED', timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                                    });
+                                }
+                            }
+                        } else if(currentStatus === 'COMPLETED' && targetStatus === 'REJECTED') {
+                            // Ensure wallet.equity is a number before subtracting
+                            if (typeof wallet.equity !== 'number') {
+                                wallet.equity = 0;
+                            }
+                            wallet.equity -= amount;
+                        }
+                    } 
+                    else if(type === 'WITHDRAW') {
+                        if (typeof wallet.withdrawalWallet !== 'number') {
+                            wallet.withdrawalWallet = 0;
+                        }
+                        if(targetStatus === 'COMPLETED') {
+                            wallet.withdrawalWallet -= amount;
+                        } else if(currentStatus === 'COMPLETED' && targetStatus === 'REJECTED') {
+                            wallet.withdrawalWallet += amount;
+                        }
+                    }
+                    else if(type === 'TRANSFER') { // This is for actual funds transfer
+                        // Ensure wallet.equity and withdrawalWallet are numbers
+                        if(targetStatus === 'COMPLETED') {
+                            if (wallet.equity < amount) {
+                                throw new Error("Insufficient main balance to complete transfer.");
+                            }
+                            wallet.equity -= amount;
+                            wallet.withdrawalWallet = (wallet.withdrawalWallet || 0) + amount;
+                        }
+                        else if(currentStatus === 'COMPLETED' && targetStatus === 'REJECTED') {
+                            wallet.equity += amount;
+                            wallet.withdrawalWallet -= amount;
+                        }
+                    }
+
+                    t.update(userRef, { wallet: wallet, walletActivation: userData.walletActivation || null });
+                    t.update(db.collection('transactions').doc(trxId), { status: targetStatus, lastUpdated: firebase.firestore.FieldValue.serverTimestamp() });
+                });
+                showToast("Transaction Updated Successfully", "success");
+            } catch(e) {
+                showToast("Error: " + e.message, "error");
+                console.error("Transaction failed:", e);
+            }
+        }
+
+        function loadAdminCoupons() {
+            db.collection('coupons').onSnapshot(snap => {
+                const container = document.getElementById('admin-coupon-content');
+                container.innerHTML = `
+                    <div class="card-bg p-4 mb-4">
+                        <input type="text" id="cp-code" class="w-full bg-black border border-gray-700 p-2 rounded mb-2" placeholder="Code">
+                        <input type="number" id="cp-val" class="w-full bg-black border border-gray-700 p-2 rounded mb-2" placeholder="Value (INR)">
+                        <button onclick="addCoupon()" class="w-full bg-yellow-500 text-black py-2 rounded font-bold">ADD COUPON</button>
+                    </div>
+                    <div id="cp-list" class="space-y-2"></div>
+                `;
+                const list = document.getElementById('cp-list');
+                snap.forEach(doc => {
+                    const c = doc.data();
+                    list.innerHTML += `
+                        <div class="p-3 card-bg flex justify-between items-center">
+                            <div><p class="font-bold">${c.code}</p><p class="text-[10px] text-green-500">Value: ₹${c.value}</p></div>
+                            <div class="flex gap-2">
+                                <button onclick="toggleCoupon('${doc.id}', ${!c.active})" class="p-1 px-2 rounded text-[8px] ${c.active?'bg-green-600':'bg-gray-700'}">${c.active?'ON':'OFF'}</button>
+                                <button onclick="db.collection('coupons').doc('${doc.id}').delete()" class="p-1 px-2 bg-red-600 rounded text-[8px]"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>`;
+                });
+            });
+        }
+
+        async function addCoupon() {
+            const code = document.getElementById('cp-code').value.toUpperCase();
+            const val = parseFloat(document.getElementById('cp-val').value);
+            if(!code || isNaN(val) || val <= 0) {
+                return showToast("Please enter a valid code and positive value.", "error");
+            }
+            try {
+                await db.collection('coupons').add({ code, value: val, active: true });
+                showToast("Coupon added successfully!", "success");
+            } catch (e) {
+                showToast("Error adding coupon: " + e.message, "error");
+            }
+        }
+
+        async function toggleCoupon(id, status) {
+            await db.collection('coupons').doc(id).update({ active: status });
+            showToast("Coupon status updated.", "success");
+        }
+
+        // --- KYC MANAGEMENT ---
+        function loadAdminKYC() {
+            db.collection('users')
+              .where('kycStatus', 'in', ['Reviewing', 'Verified', 'Rejected']) // Show all relevant statuses
+              .onSnapshot(snap => {
+                const list = document.getElementById('admin-kyc-list');
+                if (!list) return;
+
+                let users = [];
+                snap.forEach(doc => users.push({ uid: doc.id, ...doc.data() }));
+
+                // Client-side sort: Latest submission at top
+                users.sort((a, b) => {
+                    const tA = (a.kycData && a.kycData.submittedAt) ? a.kycData.submittedAt.toMillis() : 0;
+                    const tB = (b.kycData && b.kycData.submittedAt) ? b.kycData.submittedAt.toMillis() : 0;
+                    return tB - tA;
+                });
+
+                list.innerHTML = users.length === 0 ? '<p class="text-xs text-gray-600 italic">No pending KYC requests</p>' : '';
+                users.forEach(u => {
+                    const kd = u.kycData || {};
+                    let statusBadgeClass = 'bg-blue-500/10 text-blue-500'; // Default for Reviewing
+                    let borderColor = 'border-blue-500';
+                    if (u.kycStatus === 'Verified') {
+                        statusBadgeClass = 'bg-green-500/10 text-green-500';
+                        borderColor = 'border-green-500';
+                    } else if (u.kycStatus === 'Rejected') {
+                        statusBadgeClass = 'bg-red-500/10 text-red-500';
+                        borderColor = 'border-red-500';
+                    }
+
+                    list.innerHTML += `
+                        <div class="p-4 card-bg border-l-4 ${borderColor} mb-3">
+                            <div class="flex justify-between items-center mb-2">
+                                <p class="text-xs font-bold text-blue-400 uppercase">${kd.name || u.name}</p>
+                                <span class="badge ${statusBadgeClass}">${u.kycStatus}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 mb-4">
+                                <p class="text-[9px] text-gray-500 font-bold uppercase">City: <span class="text-gray-300">${kd.city || 'N/A'}</span></p>
+                                <p class="text-[9px] text-gray-500 font-bold uppercase">Phone: <span class="text-gray-300">${kd.phone || 'N/A'}</span></p>
+                                <p class="text-[9px] text-gray-500 font-bold uppercase col-span-2">UPI ID: <span class="text-yellow-500 font-mono">${kd.upi || 'N/A'}</span></p>
+                                <p class="text-[9px] text-gray-500 font-bold uppercase col-span-2">Submitted: <span class="text-gray-300">${kd.submittedAt ? new Date(kd.submittedAt.toDate()).toLocaleString() : 'N/A'}</span></p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="handleKYCStatus('${u.uid}', 'Verified')" class="flex-1 bg-green-600 py-2 rounded text-[10px] font-bold uppercase tracking-wider">Approve</button>
+                                <button onclick="handleKYCStatus('${u.uid}', 'Rejected')" class="flex-1 bg-red-900/30 text-red-500 py-2 rounded text-[10px] font-bold uppercase tracking-wider">Reject</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+        }
+
+        async function handleKYCStatus(uid, status) {
+            const msg = status === 'Verified' ? "KYC Approved" : "KYC Rejected";
+            await db.collection('users').doc(uid).update({ kycStatus: status });
+            showToast(msg, status === 'Verified' ? "success" : "error");
+        }
+
+        // --- LEADERBOARD MANAGEMENT FUNCTIONS (FIXED MISSING FUNCTIONS) ---
+        function loadLeaderboardManagement() {
+            db.collection('leaderboard').orderBy('rank', 'asc').onSnapshot(snap => {
+                const list = document.getElementById('current-leaderboard-list');
+                if(!list) return;
+                list.innerHTML = snap.empty ? '<p class="text-xs text-gray-600 italic">Leaderboard is empty</p>' : '';
+                snap.forEach(doc => {
+                    const l = doc.data();
+                    const profit = (l.displayProfit || 0).toLocaleString('en-IN');
+                    list.innerHTML += `
+                        <div class="p-3 card-bg flex justify-between items-center border-l-2 border-yellow-500 mb-2">
+                            <div>
+                                <p class="text-xs font-bold">#${l.rank} - ${l.displayName}</p>
+                                <p class="text-[9px] text-gray-500">Profit: ₹${profit} | Winrate: ${l.winRate}%</p>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="editLeaderboardEntry('${doc.id}')" class="text-blue-400 text-xs"><i class="fas fa-edit"></i></button>
+                                <button onclick="removeFromLeaderboard('${doc.id}')" class="text-red-500 text-xs"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>
+                    `;
+                });
+            });
+        }
+
+        async function editLeaderboardEntry(id) {
+            const doc = await db.collection('leaderboard').doc(id).get();
+            if(!doc.exists) return;
+            const data = doc.data();
+
+            const newName = await showPrompt("Edit Name", `Current Name: ${data.displayName}`, true);
+            if(newName === null) return;
+
+            const newRank = await showPrompt("Edit Rank", `Current Rank: ${data.rank}`, true);
+            if(newRank === null) return;
+
+            const newProfit = await showPrompt("Edit Profit", `Current Profit: ${data.displayProfit}`, true);
+            if(newProfit === null) return;
+
+            const newWinRate = await showPrompt("Edit Win Rate", `Current Win Rate: ${data.winRate}`, true);
+            if(newWinRate === null) return;
+
+            const newWithdrawn = await showPrompt("Edit Withdrawn", `Current Withdrawn: ${data.totalWithdrawn}`, true);
+            if(newWithdrawn === null) return;
+
+            try {
+                await db.collection('leaderboard').doc(id).update({
+                    displayName: newName,
+                    rank: parseInt(newRank),
+                    displayProfit: parseFloat(newProfit.toString().replace(/,/g, '')),
+                    winRate: parseInt(newWinRate),
+                    totalWithdrawn: parseFloat(newWithdrawn.toString().replace(/,/g, ''))
+                });
+                showToast("Leaderboard entry updated!", "success");
+            } catch (e) {
+                showToast("Update failed: " + e.message, "error");
+            }
+        }
+
+        async function manualAddLeaderboard() {
+            const name = await showPrompt("Manual Entry", "Enter Display Name:", true);
+            if(!name) return;
+            
+            const rank = await showPrompt("Leaderboard Rank", "Enter Rank (1, 2, 3...):", true);
+            if(!rank) return;
+            
+            const profitInput = await showPrompt("Leaderboard Profit", "Enter Display Profit (e.g. 1,15,000):", true);
+            if(!profitInput) return;
+            
+            const winrate = await showPrompt("Win Rate", "Enter Win Rate % (e.g. 98):", true);
+            const withdrawnInput = await showPrompt("Withdrawn", "Enter Total Withdrawn Amount:", true);
+
+            const profit = parseFloat(profitInput.replace(/,/g, ''));
+            const withdrawn = parseFloat((withdrawnInput || "0").replace(/,/g, ''));
+
+            try {
+                await db.collection('leaderboard').add({
+                    userId: "MANUAL_" + Date.now(), 
+                    displayName: name, rank: parseInt(rank),
+                    displayProfit: profit, winRate: parseInt(winrate || 0),
+                    totalWithdrawn: withdrawn
+                });
+                showToast("Manual entry added to leaderboard!", "success");
+            } catch (e) { showToast(e.message, "error"); }
+        }
+
+        async function searchUsersForLeaderboard(query) {
+            if(!query || query.length < 2) {
+                document.getElementById('leaderboard-user-search-results').innerHTML = '';
+                return;
+            }
+            const snap = await db.collection('users').get();
+            const results = [];
+            snap.forEach(doc => {
+                const u = doc.data();
+                // Ensure name and email exist before calling toLowerCase()
+                if(u.uid !== ADMIN_UID && (
+                    (u.name && u.name.toLowerCase().includes(query.toLowerCase())) ||
+                    (u.email && u.email.toLowerCase().includes(query.toLowerCase())) )) {
+                    results.push({uid: u.uid, name: u.name, email: u.email});
+                }
+            });
+
+            const container = document.getElementById('leaderboard-user-search-results');
+            container.innerHTML = results.map(u => `
+                <div class="p-2 bg-black/40 rounded flex justify-between items-center">
+                    <p class="text-[10px]">${u.name || 'N/A'} (${u.email || 'N/A'})</p>
+                    <button onclick="prepareLeaderboardAdd('${u.uid}')" class="bg-yellow-500 text-black px-2 py-1 rounded text-[8px] font-bold">SELECT</button>
+                </div>
+            `).join('');
+        }
+
+        async function prepareLeaderboardAdd(uid) {
+            const userDoc = await db.collection('users').doc(uid).get();
+            if (!userDoc.exists) {
+                showToast("User not found!", "error");
+                return;
+            }
+            const u = userDoc.data();
+            const name = u.name;
+            
+            const rank = await showPrompt("Leaderboard Rank", "Enter Rank (1, 2, 3...):", true);
+            if(!rank) return;
+            const profitInput = await showPrompt("Leaderboard Profit", "Enter Display Profit (e.g. 1,15,000):", true);
+            if(!profitInput) return;
+            const winrate = await showPrompt("Win Rate", "Enter Win Rate % (e.g. 98):", true);
+            const withdrawnInput = await showPrompt("Withdrawn", "Enter Total Withdrawn Amount:", true);
+
+            const profit = parseFloat(profitInput.replace(/,/g, ''));
+            const withdrawn = parseFloat((withdrawnInput || "0").replace(/,/g, ''));
+
+            try {
+                await db.collection('leaderboard').add({
+                    userId: uid, displayName: name, rank: parseInt(rank),
+                    displayProfit: profit, winRate: parseInt(winrate || 0),
+                    totalWithdrawn: withdrawn
+                });
+                showToast("User added to leaderboard!", "success");
+            } catch (e) { showToast(e.message, "error"); }
+        }
+
+        async function removeFromLeaderboard(id) {
+            const confirmed = await showPrompt("Remove Entry", "Remove this user from leaderboard?", false);
+            if(confirmed) {
+                await db.collection('leaderboard').doc(id).delete();
+                showToast("Entry removed.", "info");
+            }
+        }
+
+        function loadAdminSupport() {
+            db.collection('support_tickets').onSnapshot(snap => {
+                const list = document.getElementById('admin-ticket-list');
+                list.innerHTML = snap.empty ? '<p class="text-xs text-gray-600 italic">No tickets found</p>' : '';
+                
+                let tickets = [];
+                snap.forEach(doc => {
+                    // Using serverTimestamps estimate to prevent crash on null timestamps
+                    tickets.push({id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) });
+                });
+                // Robust sort for Admin View
+                tickets.sort((a, b) => {
+                    const timeA = a.timestamp ? a.timestamp.toMillis() : 0;
+                    const timeB = b.timestamp ? b.timestamp.toMillis() : 0;
+                    return timeB - timeA;
+                });
+
+                let html = '';
+                tickets.forEach(t => {
+                    let chatHtml = (t.messages || []).map(m => `
+                        <div class="mb-2 ${m.role === 'admin' ? 'text-right' : 'text-left'}">
+                            <p class="text-[8px] font-bold ${m.role === 'admin' ? 'text-blue-400' : 'text-yellow-500'} uppercase">${m.role === 'admin' ? 'You' : t.userName}</p>
+                            <p class="text-[11px] text-gray-300 bg-black/40 inline-block p-2 rounded-lg border border-gray-800">${m.text}</p>
+                        </div>
+                    `).join('');
+
+                    html += `
+                    <div class="p-4 card-bg border-l-4 ${t.status === 'OPEN' ? 'border-yellow-500' : 'border-green-500'} mb-3">
+                        <div class="flex justify-between items-center mb-2">
+                            <p class="text-xs font-bold text-yellow-500">${t.userName}</p>
+                            <div class="flex gap-2 items-center">
+                                <span class="badge">${t.status}</span>
+                                ${t.status === 'OPEN' ? `<button onclick="resolveTicket('${t.id}')" class="text-[8px] bg-green-900/30 text-green-500 px-2 py-1 rounded font-bold uppercase">Resolve</button>` : ''}
+                            </div>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto mb-4 no-scrollbar border-y border-gray-800/50 py-3" id="admin-chat-box-${t.id}">
+                            ${chatHtml}
+                        </div>
+                        ${t.status === 'OPEN' ? `
+                        <div class="flex gap-2">
+                            <input type="text" id="reply-${t.id}" placeholder="Type reply..." class="flex-1 bg-black p-2 rounded text-[10px] border border-gray-700">
+                            <button onclick="replyTicket('${t.id}')" class="bg-blue-600 px-3 py-1 rounded text-[10px] font-bold">REPLY</button>
+                        </div>` : ''}
+                    </div>`;
+                });
+                list.innerHTML = html;
+
+                // Admin auto-scroll to follow latest replies
+                setTimeout(() => {
+                    tickets.forEach(t => {
+                        const box = document.getElementById(`admin-chat-box-${t.id}`);
+                        if(box) box.scrollTop = box.scrollHeight;
+                    });
+                }, 100);
+            });
+        }
+
+        async function replyTicket(tid) {
+            try {
+                const replyInput = document.getElementById('reply-'+tid);
+                const reply = replyInput.value;
+                if(!reply) return showToast("Reply cannot be empty.", "error");
+                await db.collection('support_tickets').doc(tid).update({ 
+                    messages: firebase.firestore.FieldValue.arrayUnion({ role: 'admin', text: reply, time: Date.now() }),
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                replyInput.value = '';
+                showToast("Reply sent.", "success");
+            } catch (e) {
+                showToast("Error sending reply: " + e.message, "error");
+            }
+        }
+
+        async function resolveTicket(tid) {
+            const confirmed = await showPrompt("Confirm Resolve", "Are you sure you want to mark this ticket as RESOLVED?", false);
+            if (!confirmed) return;
+            try {
+                await db.collection('support_tickets').doc(tid).update({ status: 'RESOLVED' });
+                showToast("Ticket marked as Resolved", "success");
+            } catch (e) { showToast("Error resolving ticket: " + e.message, "error"); }
+            
+        }
+
+        async function adminOpenTradeForUser() {
+            const symbol = await showPrompt("Force Trade", "Symbol (e.g. BTCUSD):", true);
+            if(!symbol) return;
+            const type = await showPrompt("Force Trade", "Type (BUY/SELL):", true);
+            if(!type) return;
+            const lot = await showPrompt("Force Trade", "Lot Size (e.g. 0.10):", true);
+            if(!lot) return;
+            const priceInput = await showPrompt("Force Trade", "Entry Price:", true);
+            if(!priceInput) return;
+            
+            const price = parseFloat(priceInput.replace(/,/g, ''));
+
+            if(!symbol || !type || !lot || isNaN(price)) {
+                return showToast("All trade details are required.", "error");
+            }
+
+            try {
+                await db.collection('trades').add({
+                    userId: managedUserId, symbol: symbol.toUpperCase(), type: type.toUpperCase(),
+                    lot: parseFloat(lot), entryPrice: price, status: 'OPEN',
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                showToast("Trade opened for user.", "success");
+            } catch (e) {
+                showToast("Error opening trade: " + e.message, "error");
+            }
+        }
+
+        // NEW UI HELPER FUNCTIONS (Copied from index.html)
+        function showToast(msg, type = "success") {
+            const container = document.getElementById('toast-container');
+            if (!container) { alert(msg); return; } // Fallback if container not found
+            const toast = document.createElement('div');
+            const colors = { success: 'border-green-500', error: 'border-red-500', info: 'border-yellow-500' };
+            
+            toast.className = `p-4 card-bg border-l-4 ${colors[type] || 'border-blue-500'} shadow-2xl min-w-[250px] toast-animate pointer-events-auto`;
+            toast.innerHTML = `<div class="flex items-center gap-3">
+                <i class="fas ${type==='success'?'fa-check-circle text-green-500':(type==='error'?'fa-exclamation-circle text-red-500':'fa-info-circle text-yellow-500')}"></i>
+                <div><p class="text-[10px] font-bold uppercase text-gray-400">${type}</p><p class="text-[11px] font-bold">${msg}</p></div>
+            </div>`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s ease'; setTimeout(() => toast.remove(), 500); }, 4000);
+        }
+
+        function showPrompt(title, msg, isPrompt = false) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('prompt-modal');
+                const input = document.getElementById('prompt-input');
+                if (!modal) { resolve(isPrompt ? prompt(msg) : confirm(msg)); return; } // Fallback if modal not found
+                document.getElementById('prompt-title').innerText = title; document.getElementById('prompt-msg').innerText = msg; input.classList.toggle('hidden', !isPrompt); input.value = ""; modal.classList.remove('hidden');
+                const cleanup = (val) => { modal.classList.add('hidden'); resolve(val); };
+                document.getElementById('prompt-confirm').onclick = () => cleanup(isPrompt ? input.value : true); document.getElementById('prompt-cancel').onclick = () => cleanup(null);
+            });
+        }
+    </script>
+</body>
+</html>
             });
         }
 

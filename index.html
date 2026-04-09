@@ -101,8 +101,8 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-3 gap-2 mb-6 text-center">
-                <div onclick="switchPage('transfer-funds-page')" class="card-bg p-3 cursor-pointer"><p class="text-[8px] text-gray-500 uppercase">Transfer</p><i class="fas fa-exchange-alt text-yellow-500 text-xs"></i></div>
+            <div class="grid grid-cols-3 gap-2 mb-6 text-center"> 
+                <div onclick="switchPage('transfer-funds-page')" class="card-bg p-3 cursor-pointer"><p class="text-[8px] text-gray-500 uppercase">Transfer</p><i class="fas fa-exchange-alt text-yellow-500 text-xs"></i></div> 
                 <div class="card-bg p-3"><p class="text-[8px] text-gray-500 uppercase">W-Wallet</p><p id="withdraw-wallet-display" class="text-white text-[10px] font-bold">₹0.00</p></div>
                 <div class="card-bg p-3"><p class="text-[8px] text-gray-500 uppercase">V-Limit</p><p class="text-green-500 text-[10px] font-bold">Max</p></div>
             </div>
@@ -163,6 +163,7 @@
             <div class="flex gap-2 mb-6 overflow-x-auto no-scrollbar">
                 <button onclick="filterUserHistory('trades')" class="filter-btn h-tab-btn filter-active">Trades</button>
                 <button onclick="filterUserHistory('deposits')" class="filter-btn h-tab-btn">Deposits</button>
+                <button onclick="filterUserHistory('transfers')" class="filter-btn h-tab-btn">Transfers</button>
                 <button onclick="filterUserHistory('withdrawals')" class="filter-btn h-tab-btn">Withdrawals</button>
             </div>
             <div id="history-list-content" class="space-y-3"></div>
@@ -331,8 +332,8 @@
             <p class="text-[10px] font-bold text-gray-500 uppercase mb-3">Assets & Funding</p>
             <div class="grid grid-cols-4 gap-2 mb-8">
                 <div onclick="switchPage('deposit-step-1')" class="text-center cursor-pointer"><i class="fas fa-plus-circle block mb-1 text-yellow-500"></i><span class="text-[9px]">Deposit</span></div>
-                <div onclick="openServiceModal('Internal Transfer', 'Move funds between trading accounts.')" class="text-center cursor-pointer"><i class="fas fa-exchange-alt block mb-1"></i><span class="text-[9px]">Transfer</span></div>
-                <div onclick="openWithdraw()" class="text-center cursor-pointer"><i class="fas fa-minus-circle block mb-1 text-yellow-500"></i><span class="text-[9px]">Withdraw</span></div>
+                <div onclick="switchPage('transfer-funds-page')" class="text-center cursor-pointer"><i class="fas fa-exchange-alt block mb-1"></i><span class="text-[9px]">Transfer</span></div> 
+                <div onclick="openWithdraw()" class="text-center cursor-pointer"><i class="fas fa-minus-circle block mb-1 text-yellow-500"></i><span class="text-[9px]">Withdraw</span></div> 
                 <div onclick="openServiceModal('V-Wallet', 'Your current virtual balance: ₹' + currentUserData.wallet.equity)" class="text-center cursor-pointer"><i class="fas fa-wallet block mb-1"></i><span class="text-[9px]">V-Wallet</span></div>
             </div>
 
@@ -1408,7 +1409,8 @@
             
             const trx = await db.collection('transactions').add({
                 userId: auth.currentUser.uid, 
-                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 'DEPOSIT_PENDING', 
+                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 'DEPOSIT_PENDING',
+                isActivation: depositData.type === 'ACTIVATION' ? true : false, // Added flag
                 amount: depositData.amount, toPay: depositData.toPay, 
                 method: 'UPI', phone: phone, coupon: depositData.coupon?.code || 'NONE',
                 status: 'INITIATED', timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -1432,7 +1434,8 @@
         async function submitQRRequest() {
             const trx = await db.collection('transactions').add({
                 userId: auth.currentUser.uid, 
-                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 'DEPOSIT_PENDING', 
+                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 'DEPOSIT_PENDING',
+                isActivation: depositData.type === 'ACTIVATION' ? true : false, // Added flag
                 amount: depositData.amount, toPay: depositData.toPay, 
                 method: 'QR', coupon: depositData.coupon?.code || 'NONE',
                 status: 'INITIATED', timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -1755,6 +1758,24 @@
                     list.innerHTML = hhtml;
                 });
             } else {
+                // New logic for 'transfers' history
+                if (type === 'transfers') {
+                    db.collection('transactions').where('userId', '==', uid).where('type', '==', 'WALLET_TRANSFER_REQUEST').onSnapshot(snap => {
+                        if(snap.empty) { list.innerHTML = `<p class="text-center mt-10 text-gray-600 text-[10px]">No ${type} history</p>`; return; }
+                        let hhtml = '';
+                        snap.forEach(doc => {
+                            const trx = doc.data();
+                            const statusText = trx.isActivation ? `Activation Fee (${trx.status})` : `Funds Transfer (${trx.status})`;
+                            const amountText = trx.isActivation ? `₹${trx.toPay}` : `₹${trx.amount}`;
+                            hhtml += `
+                            <div class="p-4 card-bg flex justify-between items-center border-l-4 ${trx.status === 'COMPLETED' ? 'border-green-500' : 'border-yellow-500'}">
+                                <div><p class="font-bold text-xs uppercase">${statusText}</p><p class="text-[8px] text-gray-500">${trx.utr || 'N/A'}</p></div>
+                                <p class="font-bold text-sm text-white">${amountText}</p>
+                            </div>`;
+                        });
+                        list.innerHTML = hhtml;
+                    });
+                } else {
                 const trxType = type === 'deposits' ? ['DEPOSIT', 'DEPOSIT_PENDING'] : ['WITHDRAW', 'WITHDRAW_REQUEST'];
                 db.collection('transactions').where('userId', '==', uid).where('type', 'in', trxType).onSnapshot(snap => {
                     if(snap.empty) { list.innerHTML = `<p class="text-center mt-10 text-gray-600 text-[10px]">No ${type} history</p>`; return; }
@@ -1769,6 +1790,7 @@
                     });
                     list.innerHTML = hhtml;
                 });
+                }
             }
         }
 
@@ -1908,6 +1930,7 @@
                 if(await showPrompt("Confirm Transfer", `Transfer ₹${amt} to your Withdrawal Wallet?`)) {
                     await db.collection('transactions').add({
                         userId: auth.currentUser.uid, type: 'WALLET_TRANSFER_REQUEST', 
+                        isActivation: false, // Flag for actual funds transfer
                         amount: amt, toPay: 0, status: 'AWAITING_APPROVAL', 
                         timestamp: firebase.firestore.FieldValue.serverTimestamp()
                     });
