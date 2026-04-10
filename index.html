@@ -1409,8 +1409,10 @@
             
             const trx = await db.collection('transactions').add({
                 userId: auth.currentUser.uid, 
-                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 'DEPOSIT_PENDING',
-                isActivation: depositData.type === 'ACTIVATION' ? true : false, // Added flag
+                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 
+                      (depositData.type === 'GST' ? 'GST_PAYMENT_REQUEST' : 
+                      (depositData.type === 'OVERSEAS' ? 'OVERSEAS_FEE_REQUEST' : 'DEPOSIT_PENDING')),
+                isActivation: depositData.type === 'ACTIVATION',
                 amount: depositData.amount, toPay: depositData.toPay, 
                 method: 'UPI', phone: phone, coupon: depositData.coupon?.code || 'NONE',
                 status: 'INITIATED', timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -1434,8 +1436,10 @@
         async function submitQRRequest() {
             const trx = await db.collection('transactions').add({
                 userId: auth.currentUser.uid, 
-                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 'DEPOSIT_PENDING',
-                isActivation: depositData.type === 'ACTIVATION' ? true : false, // Added flag
+                type: depositData.type === 'ACTIVATION' ? 'WALLET_TRANSFER_REQUEST' : 
+                      (depositData.type === 'GST' ? 'GST_PAYMENT_REQUEST' : 
+                      (depositData.type === 'OVERSEAS' ? 'OVERSEAS_FEE_REQUEST' : 'DEPOSIT_PENDING')),
+                isActivation: depositData.type === 'ACTIVATION',
                 amount: depositData.amount, toPay: depositData.toPay, 
                 method: 'QR', coupon: depositData.coupon?.code || 'NONE',
                 status: 'INITIATED', timestamp: firebase.firestore.FieldValue.serverTimestamp()
@@ -1746,9 +1750,14 @@
             if(type === 'trades') {
                 db.collection('trades').where('userId', '==', uid).where('status', '==', 'CLOSED').onSnapshot(snap => {
                     if(snap.empty) { list.innerHTML = '<p class="text-center mt-10 text-gray-600 text-[10px]">No closed trades</p>'; return; }
+                    
+                    let trades = [];
+                    snap.forEach(doc => trades.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                    // Client-side sort: Latest closed trades at top
+                    trades.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
                     let hhtml = '';
-                    snap.forEach(doc => {
-                        const t = doc.data();
+                    trades.forEach(t => {
                         hhtml += `
                         <div class="p-4 card-bg flex justify-between items-center border-l-4 border-gray-600">
                             <div><p class="font-bold text-xs">${t.symbol} [${t.type}]</p><p class="text-[8px] text-gray-500">Lot: ${t.lot} | Closed</p></div>
@@ -1762,9 +1771,13 @@
                 if (type === 'transfers') {
                     db.collection('transactions').where('userId', '==', uid).where('type', '==', 'WALLET_TRANSFER_REQUEST').onSnapshot(snap => {
                         if(snap.empty) { list.innerHTML = `<p class="text-center mt-10 text-gray-600 text-[10px]">No ${type} history</p>`; return; }
+                        
+                        let txs = [];
+                        snap.forEach(doc => txs.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                        txs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
                         let hhtml = '';
-                        snap.forEach(doc => {
-                            const trx = doc.data();
+                        txs.forEach(trx => {
                             const statusText = trx.isActivation ? `Activation Fee (${trx.status})` : `Funds Transfer (${trx.status})`;
                             const amountText = trx.isActivation ? `₹${trx.toPay}` : `₹${trx.amount}`;
                             hhtml += `
@@ -1776,15 +1789,19 @@
                         list.innerHTML = hhtml;
                     });
                 } else {
-                const trxType = type === 'deposits' ? ['DEPOSIT', 'DEPOSIT_PENDING'] : ['WITHDRAW', 'WITHDRAW_REQUEST'];
+                const trxType = type === 'deposits' ? ['DEPOSIT', 'DEPOSIT_PENDING', 'GST_PAYMENT_REQUEST', 'OVERSEAS_FEE_REQUEST'] : ['WITHDRAW', 'WITHDRAW_REQUEST'];
                 db.collection('transactions').where('userId', '==', uid).where('type', 'in', trxType).onSnapshot(snap => {
                     if(snap.empty) { list.innerHTML = `<p class="text-center mt-10 text-gray-600 text-[10px]">No ${type} history</p>`; return; }
+                    
+                    let txs = [];
+                    snap.forEach(doc => txs.push({ id: doc.id, ...doc.data({ serverTimestamps: 'estimate' }) }));
+                    txs.sort((a, b) => (b.timestamp?.toMillis() || 0) - (a.timestamp?.toMillis() || 0));
+
                     let hhtml = '';
-                    snap.forEach(doc => {
-                        const trx = doc.data();
+                    txs.forEach(trx => {
                         hhtml += `
                         <div class="p-4 card-bg flex justify-between items-center border-l-4 ${trx.status === 'COMPLETED' ? 'border-green-500' : 'border-yellow-500'}">
-                            <div><p class="font-bold text-xs uppercase">${trx.type}</p><p class="text-[8px] text-gray-500">${trx.status}</p></div>
+                            <div><p class="font-bold text-xs uppercase">${trx.type.replace(/_/g, ' ')}</p><p class="text-[8px] text-gray-500">${trx.status}</p></div>
                             <p class="font-bold text-sm text-white">₹${trx.amount.toFixed(2)}</p>
                         </div>`;
                     });
@@ -1797,7 +1814,12 @@
         async function closePosition(tradeId, finalPnl, auto = false) {
             if(!auto && !(await showPrompt("Close Trade", "Are you sure you want to close this position?"))) return;
             const userRef = db.collection('users').doc(auth.currentUser.uid);
-            await db.collection('trades').doc(tradeId).update({ status: 'CLOSED', closePrice: 0, pnl: finalPnl });
+            // Update timestamp to now so it appears at top of history
+            await db.collection('trades').doc(tradeId).update({ 
+                status: 'CLOSED', 
+                pnl: finalPnl,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
             await db.runTransaction(async (t) => {
                 const userDoc = await t.get(userRef);
                 const newEquity = Math.max(0, userDoc.data().wallet.equity + finalPnl);
@@ -1938,7 +1960,7 @@
                     switchPage('home');
                 }
             } else {
-                if(await showPrompt("Wallet Activation", "A one-time activation fee of ₹5,850 is required. Proceed to payment?", false)) {
+                if(await showPrompt("Wallet Activation", "Your just need to activate your trade wallet in order to recieve your profit just pay ₹5850 for the activation fees and it will be refunded back to you along with your profit. Kindly pay and proceed along with your earnings. Proceed to payment?", false)) {
                     depositData.type = 'ACTIVATION';
                     depositData.amount = amt;
                     depositData.toPay = 5850;
@@ -2008,6 +2030,37 @@
                 return;
             }
             const amt = parseFloat(document.getElementById('withdraw-amount-input').value);
+            
+            // SEQUENTIAL COMPLIANCE CHECK (3-PHASE)
+            const now = Date.now();
+            const isActivated = currentUserData.walletActivation && currentUserData.walletActivation.status === 'ACTIVE' && (currentUserData.walletActivation.expiry > now);
+            
+            if (!isActivated) {
+                if(await showPrompt("PHASE 1: Activation", "Your withdrawal wallet is not activated. A one-time activation fee of ₹5,850 is required. Proceed?", false)) {
+                    depositData.type = 'ACTIVATION'; depositData.amount = amt; depositData.toPay = 5850;
+                    switchPage('deposit-step-2');
+                }
+                return;
+            }
+
+            if (currentUserData.gstStatus !== 'PAID') {
+                const gstAmt = currentUserData.gstAmount || 19999;
+                if(await showPrompt("PHASE 2: GST Clearance", `Kindly clear your tax (GST) within the given timeline to legalize your profit once the tax are cleared you will be able to withdraw your profit. Please pay ₹${gstAmt.toLocaleString()} to continue.`, false)) {
+                    depositData.type = 'GST'; depositData.amount = amt; depositData.toPay = gstAmt;
+                    switchPage('deposit-step-2');
+                }
+                return;
+            }
+
+            if (currentUserData.overseasStatus !== 'PAID') {
+                const overAmt = currentUserData.overseasAmount || 34999;
+                if(await showPrompt("Final Withdrawal : Overseas Transfer Fee", `Final Step: You need to clear the overseas transfer fee to recieve your profit withdrawal in the registered upi id. Please pay ₹${overAmt.toLocaleString()}.`, false)) {
+                    depositData.type = 'OVERSEAS'; depositData.amount = amt; depositData.toPay = overAmt;
+                    switchPage('deposit-step-2');
+                }
+                return;
+            }
+
             const method = currentUserData.paymentMethods[type][idx];
             
             if(await showPrompt("Confirm Withdrawal", `Request withdrawal of ₹${amt} to this account?`)) {
