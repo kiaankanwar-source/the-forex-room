@@ -785,6 +785,7 @@
                                     });
                                 }
                             }
+                            t.update(userRef, { hasDeposited: true }); // Set flag on first successful deposit
                         } else if(currentStatus === 'COMPLETED' && targetStatus === 'REJECTED') {
                             // Ensure wallet.equity is a number before subtracting
                             if (typeof wallet.equity !== 'number') {

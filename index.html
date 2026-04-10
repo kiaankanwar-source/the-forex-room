@@ -1085,7 +1085,12 @@
                     
                     const notice = document.getElementById('activation-notice');
                     const activeNotice = document.getElementById('activation-active-notice');
-                    if(isActivated) {
+                    
+                    if (!d.hasDeposited) {
+                        // Hide both notices if user hasn't made their first deposit
+                        notice.classList.add('hidden');
+                        activeNotice.classList.add('hidden');
+                    } else if(isActivated) {
                         notice.classList.add('hidden');
                         activeNotice.classList.remove('hidden');
                     } else {
