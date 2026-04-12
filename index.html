@@ -735,7 +735,7 @@
                     <div class="flex items-center gap-3"><i class="fas fa-qrcode text-purple-500"></i><span class="text-xs font-bold">Scan QR Code</span></div>
                     <i class="fas fa-chevron-right text-gray-700"></i>
                 </div>
-                <button onclick="document.getElementById('investment-pay-modal').classList.add('hidden')" class="text-[10px] text-gray-500 mt-4 uppercase font-bold tracking-widest">Cancel</button>
+                <button onclick="history.back()" class="text-[10px] text-gray-500 mt-4 uppercase font-bold tracking-widest">Cancel</button>
             </div>
 
             <!-- Payment Details -->
@@ -1173,6 +1173,13 @@
             }
         });
 
+        // Handle hardware and browser back buttons
+        window.addEventListener('popstate', (event) => {
+            if (event.state && event.state.page) {
+                switchPage(event.state.page, null, false); // Don't push state again on pop
+            }
+        });
+
         // Global state to store notifications
         let currentUserNotifications = [];
         
@@ -1235,6 +1242,7 @@
             document.getElementById('detail-notif-time').innerText = n.timestamp ? n.timestamp.toDate().toLocaleString() : 'Just now';
             document.getElementById('detail-notif-msg').innerText = n.message;
             document.getElementById('notif-detail-modal').classList.remove('hidden');
+            history.pushState({ page: 'notifications', modal: true }, "", "#notification-detail");
             
             // Mark as read in background
             if(!n.read) db.collection('notifications').doc(id).update({read:true});
@@ -1538,12 +1546,25 @@
             showToast(`${orderType} ${type} Order Placed at ${price}`, "success");
         }
 
-        function switchPage(p, el) {
-            // Unsubscribe from any active listeners before switching pages if they are page-specific
-            // Example: if (marketListenerUnsub) marketListenerUnsub();
+        function switchPage(p, el, push = true) {
+            if (push) {
+                history.pushState({ page: p }, "", "#" + p);
+            }
+
             document.querySelectorAll('.section').forEach(s => s.classList.remove('section-active'));
-            document.getElementById(p).scrollTop = 0; // Scroll to top of new section
-            document.getElementById(p).classList.add('section-active');
+            const target = document.getElementById(p);
+            if(target) {
+                target.scrollTop = 0;
+                target.classList.add('section-active');
+            }
+
+            // Auto-hide all modals whenever we switch page or go back
+            const modals = ['investment-pay-modal', 'notif-detail-modal', 'edit-trade-modal', 'pnl-card-modal', 'add-method-modal', 'service-modal', 'prompt-modal'];
+            modals.forEach(id => {
+                const m = document.getElementById(id);
+                if(m) m.classList.add('hidden');
+            });
+
             document.querySelectorAll('nav div').forEach(d => d.classList.remove('nav-active'));
             if(el) el.classList.add('nav-active');
         }
@@ -1611,13 +1632,19 @@
         }
 
         function openServiceModal(title, content) {
-            document.getElementById('service-title').innerText = title;
-            document.getElementById('service-content').innerHTML = content;
-            document.getElementById('service-modal').classList.remove('hidden');
+            const modal = document.getElementById('service-modal');
+            if (modal.classList.contains('hidden')) {
+                history.pushState({ page: 'profile', modal: true }, "", "#service-detail");
+            }
+            const titleEl = document.getElementById('service-title');
+            const contentEl = document.getElementById('service-content');
+            if(titleEl) titleEl.innerText = title;
+            if(contentEl) contentEl.innerHTML = content;
+            modal.classList.remove('hidden');
         }
 
         function closeServiceModal() {
-            document.getElementById('service-modal').classList.add('hidden');
+            history.back(); // Use history to sync back button
         }
 
         // This function sets up the main #trades panel
@@ -2008,6 +2035,9 @@
             document.getElementById('edit-sl').value = trade.stopLoss || '';
             document.getElementById('edit-tp').value = trade.takeProfit || '';
             document.getElementById('partial-close-lot').value = 0.01;
+            if (document.getElementById('edit-trade-modal').classList.contains('hidden')) {
+                history.pushState({ page: 'trades', modal: true }, "", "#edit-order");
+            }
             document.getElementById('edit-trade-modal').classList.remove('hidden');
         }
 
@@ -2114,6 +2144,12 @@
         function openInvestmentPayment(offerId, amount) {
             currentInvestData = { offerId, amount };
             const modal = document.getElementById('investment-pay-modal');
+            
+            // Push a state so back button closes the modal
+            if (modal.classList.contains('hidden')) {
+                history.pushState({ page: 'offers', modal: true }, "", "#offer-payment");
+            }
+
             document.getElementById('invest-selection').classList.remove('hidden');
             document.getElementById('invest-pay-details').classList.add('hidden');
             modal.classList.remove('hidden');
@@ -2233,7 +2269,11 @@
         }
 
         function openAddMethodModal() {
-            document.getElementById('add-method-modal').classList.remove('hidden');
+            const modal = document.getElementById('add-method-modal');
+            if (modal.classList.contains('hidden')) {
+                history.pushState({ page: 'withdraw-step-2', modal: true }, "", "#add-payment-method");
+            }
+            modal.classList.remove('hidden');
         }
 
         function toggleMethodInputs() {
